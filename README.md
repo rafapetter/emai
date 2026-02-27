@@ -3,7 +3,7 @@
 AI-first unified email toolkit for agents. Read, send, search, classify, extract, and manage email across any provider.
 
 ```
-npm install emai
+npm install @petter100/emai
 ```
 
 ## Why?
@@ -22,7 +22,7 @@ AI agents need email capabilities — reading inboxes, understanding content, ex
 ## Quick Start
 
 ```typescript
-import { Emai } from 'emai';
+import { Emai } from '@petter100/emai';
 
 const emai = new Emai({
   provider: {
@@ -353,7 +353,7 @@ npx emai mcp
 Or programmatically:
 
 ```typescript
-import { startEmaiMcpServer } from 'emai/mcp';
+import { startEmaiMcpServer } from '@petter100/emai/mcp';
 
 await startEmaiMcpServer({
   provider: { type: 'imap', /* ... */ },
@@ -414,7 +414,7 @@ const threads = emai.threads.detect(emails);
 Implement the `LLMAdapter` interface to use any LLM:
 
 ```typescript
-import type { LLMAdapter } from 'emai';
+import type { LLMAdapter } from '@petter100/emai';
 
 const myAdapter: LLMAdapter = {
   name: 'my-llm',
@@ -435,7 +435,7 @@ const emai = new Emai({
 Implement the `VectorStore` interface for any vector database:
 
 ```typescript
-import type { VectorStore } from 'emai';
+import type { VectorStore } from '@petter100/emai';
 
 const myStore: VectorStore = {
   name: 'my-store',

@@ -1,5 +1,5 @@
 {
-  "name": "emai",
+  "name": "@petter100/emai",
   "version": "0.1.0",
   "description": "AI-first unified email toolkit for agents — read, send, search, classify, extract, and manage email across any provider",
   "main": "dist/index.js",
