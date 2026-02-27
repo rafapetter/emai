@@ -54,8 +54,8 @@ export class ThreadDetector {
     for (const email of sorted) {
       this.addParticipant(participantMap, email.from);
       for (const addr of email.to) this.addParticipant(participantMap, addr);
-      for (const addr of email.cc) this.addParticipant(participantMap, addr);
-      for (const label of email.labels) labelSet.add(label);
+      for (const addr of email.cc ?? []) this.addParticipant(participantMap, addr);
+      for (const label of email.labels ?? []) labelSet.add(label);
     }
 
     const lastEmail = sorted[sorted.length - 1];
@@ -69,7 +69,7 @@ export class ThreadDetector {
       lastDate: lastEmail.date,
       messageCount: sorted.length,
       labels: Array.from(labelSet),
-      snippet: lastEmail.snippet ?? lastEmail.body.text?.slice(0, 200),
+      snippet: lastEmail.snippet ?? lastEmail.body?.text?.slice(0, 200),
     };
   }
 
@@ -307,7 +307,7 @@ export class ThreadDetector {
     const addrs = new Set<string>();
     addrs.add(email.from.address.toLowerCase());
     for (const a of email.to) addrs.add(a.address.toLowerCase());
-    for (const a of email.cc) addrs.add(a.address.toLowerCase());
+    for (const a of email.cc ?? []) addrs.add(a.address.toLowerCase());
     return addrs;
   }
 

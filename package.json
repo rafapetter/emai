@@ -1,6 +1,6 @@
 {
   "name": "@petter100/emai",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "AI-first unified email toolkit for agents — read, send, search, classify, extract, and manage email across any provider",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -10,13 +10,13 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs"
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
     },
     "./mcp": {
       "types": "./dist/mcp/server.d.ts",
-      "import": "./dist/mcp/server.js",
-      "require": "./dist/mcp/server.cjs"
+      "import": "./dist/mcp/server.mjs",
+      "require": "./dist/mcp/server.js"
     }
   },
   "files": [
