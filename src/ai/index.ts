@@ -21,6 +21,10 @@ import { ComposeEngine } from './compose.js';
 import { SummarizeEngine } from './summarize.js';
 import { PriorityEngine } from './priority.js';
 import { ActionsEngine } from './actions.js';
+import { TopicGroupingEngine } from './topic-grouping.js';
+import type { TopicGroupingResult, CategorySuggestion } from './topic-grouping.js';
+import { AskEngine } from './ask.js';
+import type { AskResult } from './ask.js';
 
 export class AiEngine {
   readonly adapter: LLMAdapter;
@@ -30,6 +34,8 @@ export class AiEngine {
   readonly summarize: SummarizeEngine;
   readonly priority: PriorityEngine;
   readonly actions: ActionsEngine;
+  readonly topicGrouping: TopicGroupingEngine;
+  readonly ask: AskEngine;
 
   constructor(config: AiConfig);
   constructor(adapter: LLMAdapter);
@@ -46,6 +52,8 @@ export class AiEngine {
     this.summarize = new SummarizeEngine(this.adapter);
     this.priority = new PriorityEngine(this.adapter);
     this.actions = new ActionsEngine(this.adapter);
+    this.topicGrouping = new TopicGroupingEngine(this.adapter);
+    this.ask = new AskEngine(this.adapter);
   }
 
   async classifyEmail(email: Email): Promise<ClassificationResult> {
@@ -122,6 +130,30 @@ export class AiEngine {
   async detectActionsInThread(thread: Thread): Promise<ActionItem[]> {
     return this.actions.detectActionsInThread(thread);
   }
+
+  async groupByTopic(
+    emails: Email[],
+    options?: { maxGroups?: number; minGroupSize?: number },
+  ): Promise<TopicGroupingResult> {
+    return this.topicGrouping.groupByTopic(emails, options);
+  }
+
+  async extractTopics(email: Email): Promise<string[]> {
+    return this.topicGrouping.extractTopics(email);
+  }
+
+  async suggestCategories(
+    emails: Email[],
+  ): Promise<CategorySuggestion[]> {
+    return this.topicGrouping.suggestCategories(emails);
+  }
+
+  async askQuestion(
+    question: string,
+    emails: Email[] = [],
+  ): Promise<AskResult> {
+    return this.ask.ask(question, emails);
+  }
 }
 
 function isLLMAdapter(value: unknown): value is LLMAdapter {
@@ -155,4 +187,8 @@ export { ComposeEngine } from './compose.js';
 export { SummarizeEngine } from './summarize.js';
 export { PriorityEngine } from './priority.js';
 export { ActionsEngine } from './actions.js';
+export { TopicGroupingEngine } from './topic-grouping.js';
+export type { TopicGroup, TopicGroupingResult, CategorySuggestion } from './topic-grouping.js';
+export { AskEngine } from './ask.js';
+export type { AskResult } from './ask.js';
 export { OpenAIAdapter, AnthropicAdapter, GoogleAdapter, OllamaAdapter } from './adapters/index.js';

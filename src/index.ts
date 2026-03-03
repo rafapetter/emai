@@ -14,6 +14,21 @@ import { EmaiEventEmitter } from './events/emitter.js';
 import { EmailWatcher } from './events/watcher.js';
 import { WebhookManager } from './events/webhooks.js';
 
+// New engines
+import { SnippetEngine } from './snippets/engine.js';
+import { SnoozeEngine } from './snooze/engine.js';
+import { ScheduleEngine } from './schedule/engine.js';
+import { UndoEngine } from './undo/engine.js';
+import { ReminderEngine } from './reminders/engine.js';
+import { TrackingEngine } from './tracking/engine.js';
+import { SendStatusTracker } from './tracking/send-status.js';
+import { BounceEngine } from './bounces/engine.js';
+import { RulesEngine } from './rules/engine.js';
+import { InboxEngine } from './inbox/engine.js';
+import { AutoArchiveEngine } from './auto-archive/engine.js';
+import { AutoLabelEngine } from './auto-labels/engine.js';
+import { AutoDraftsEngine } from './auto-drafts/engine.js';
+
 import type {
   EmaiConfig,
   Email,
@@ -49,6 +64,24 @@ import type {
 } from './core/types.js';
 
 import type { z } from 'zod';
+import type { UndoableSendResult } from './undo/engine.js';
+import type { SnoozedEmail } from './snooze/engine.js';
+import type { ScheduledEmail } from './schedule/engine.js';
+import type { Snippet, CreateSnippetOptions, RenderedSnippet } from './snippets/engine.js';
+import type { Reminder, ReminderStatus } from './reminders/engine.js';
+import type { TrackingEventData, TrackingStatus } from './tracking/engine.js';
+import type { SendStatusInfo, SendStatus } from './tracking/send-status.js';
+import type { StoredBounceInfo } from './bounces/engine.js';
+import type { BounceInfo } from './bounces/parser.js';
+import type { Rule, CreateRuleOptions, MatchedRule, RuleExecutionResult } from './rules/engine.js';
+import type { ConditionContext } from './rules/conditions.js';
+import type { ActionContext } from './rules/actions.js';
+import type { InboxProcessOptions, InboxProcessResult, EnrichedEmail } from './inbox/engine.js';
+import type { TopicGroupingResult, CategorySuggestion } from './ai/topic-grouping.js';
+import type { AskResult } from './ai/ask.js';
+import type { AutoArchiveEvaluation } from './auto-archive/engine.js';
+import type { AutoLabelRule, CreateAutoLabelOptions, AppliedLabel } from './auto-labels/engine.js';
+import type { FollowUpSuggestion, AutoDraftOptions } from './auto-drafts/engine.js';
 
 export class Emai {
   private provider: EmailProvider;
@@ -66,6 +99,21 @@ export class Emai {
   private webhookManager: WebhookManager;
   private config: Required<EmaiConfig>;
   private connected = false;
+
+  // New engine instances
+  private snippetEngine: SnippetEngine;
+  private snoozeEngine: SnoozeEngine;
+  private scheduleEngine: ScheduleEngine;
+  private undoEngine: UndoEngine;
+  private reminderEngine: ReminderEngine;
+  private trackingEngine: TrackingEngine;
+  private sendStatusTracker: SendStatusTracker;
+  private bounceEngine: BounceEngine;
+  private rulesEngine: RulesEngine;
+  private inboxEngine: InboxEngine;
+  private autoArchiveEngine?: AutoArchiveEngine;
+  private autoLabelEngine?: AutoLabelEngine;
+  private autoDraftsEngine?: AutoDraftsEngine;
 
   constructor(config: EmaiConfig) {
     this.config = resolveConfig(config);
@@ -104,6 +152,25 @@ export class Emai {
         );
       }
     }
+
+    // Initialize new engines
+    this.snippetEngine = new SnippetEngine(this.storageAdapter);
+    this.snoozeEngine = new SnoozeEngine(this.storageAdapter);
+    this.scheduleEngine = new ScheduleEngine(this.storageAdapter);
+    this.undoEngine = new UndoEngine(this.config.undo?.undoWindow);
+    this.reminderEngine = new ReminderEngine(this.storageAdapter);
+    this.trackingEngine = new TrackingEngine(this.storageAdapter, this.config.tracking ?? {});
+    this.sendStatusTracker = new SendStatusTracker(this.storageAdapter);
+    this.bounceEngine = new BounceEngine(this.storageAdapter);
+    this.rulesEngine = new RulesEngine(this.storageAdapter);
+    this.inboxEngine = new InboxEngine();
+
+    // AI-dependent engines
+    if (this.adapter) {
+      this.autoArchiveEngine = new AutoArchiveEngine(this.adapter, this.storageAdapter);
+      this.autoLabelEngine = new AutoLabelEngine(this.adapter, this.storageAdapter);
+      this.autoDraftsEngine = new AutoDraftsEngine(this.adapter);
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -118,9 +185,52 @@ export class Emai {
       await this.vectorStore.initialize(dims);
     }
     this.connected = true;
+
+    // Start background loops
+    this.snoozeEngine.startCheckLoop(async (emailId) => {
+      try {
+        await this.provider.markAsUnread(emailId);
+      } catch {
+        // Best-effort
+      }
+      this.eventEmitter.emit('email:unsnoozed', { emailId, reason: 'timer' });
+    });
+
+    this.scheduleEngine.startCheckLoop(async (scheduled) => {
+      try {
+        const scanResult = await this.safetyEngine.checkBeforeSend(scheduled.options);
+        if (!scanResult.allowed) {
+          await this.scheduleEngine.markFailed(
+            scheduled.id,
+            `Blocked by safety: ${scanResult.result.risks.map((r) => r.description).join('; ')}`,
+          );
+          return;
+        }
+        const result = await this.provider.sendEmail(scheduled.options);
+        await this.scheduleEngine.markSent(scheduled.id);
+        this.eventEmitter.emit('email:sent', result);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        await this.scheduleEngine.markFailed(scheduled.id, message);
+      }
+    });
+
+    this.reminderEngine.startCheckLoop((reminder) => {
+      this.eventEmitter.emit('reminder:due', {
+        reminderId: reminder.id,
+        emailId: reminder.emailId,
+        subject: reminder.subject,
+      });
+    });
   }
 
   async disconnect(): Promise<void> {
+    // Stop background loops
+    this.snoozeEngine.stopCheckLoop();
+    this.scheduleEngine.stopCheckLoop();
+    this.reminderEngine.stopCheckLoop();
+    this.undoEngine.cancelAll();
+
     if (this.emailWatcher.isWatching()) {
       await this.emailWatcher.stop();
     }
@@ -165,6 +275,18 @@ export class Emai {
 
     send: async (options: SendEmailOptions): Promise<SendResult> => {
       this.ensureConnected();
+
+      // Scheduled send: store for later
+      if (options.scheduledAt && new Date(options.scheduledAt).getTime() > Date.now()) {
+        const scheduled = await this.scheduleEngine.schedule(options);
+        this.eventEmitter.emit('email:scheduled', {
+          id: scheduled.id,
+          scheduledAt: scheduled.scheduledAt,
+        });
+        return { id: scheduled.id, threadId: undefined, messageId: scheduled.id };
+      }
+
+      // Safety check
       const scanResult = await this.safetyEngine.checkBeforeSend(options);
       if (!scanResult.allowed) {
         throw new EmaiError(
@@ -172,9 +294,69 @@ export class Emai {
           'SAFETY_BLOCKED',
         );
       }
-      const result = await this.provider.sendEmail(options);
+
+      // Inject tracking if requested
+      let sendOptions = options;
+      if (options.tracking && options.html) {
+        const trackedHtml = this.trackingEngine.injectTracking(
+          options.html,
+          'pending',
+          options.tracking,
+        );
+        sendOptions = { ...options, html: trackedHtml };
+      }
+
+      const result = await this.provider.sendEmail(sendOptions);
       this.eventEmitter.emit('email:sent', result);
+
+      // Record send status
+      try {
+        await this.sendStatusTracker.recordSent(result.id, result.messageId);
+      } catch {
+        // Non-critical
+      }
+
       return result;
+    },
+
+    sendWithUndo: async (options: SendEmailOptions): Promise<UndoableSendResult> => {
+      this.ensureConnected();
+
+      const scanResult = await this.safetyEngine.checkBeforeSend(options);
+      if (!scanResult.allowed) {
+        throw new EmaiError(
+          `Email blocked by safety scan: ${scanResult.result.risks.map((r) => r.description).join('; ')}`,
+          'SAFETY_BLOCKED',
+        );
+      }
+
+      return this.undoEngine.sendWithUndo(
+        async () => {
+          let sendOptions = options;
+          if (options.tracking && options.html) {
+            const trackedHtml = this.trackingEngine.injectTracking(
+              options.html,
+              'pending',
+              options.tracking,
+            );
+            sendOptions = { ...options, html: trackedHtml };
+          }
+
+          const result = await this.provider.sendEmail(sendOptions);
+          this.eventEmitter.emit('email:sent', result);
+
+          try {
+            await this.sendStatusTracker.recordSent(result.id, result.messageId);
+          } catch {
+            // Non-critical
+          }
+
+          return result;
+        },
+        () => {
+          this.eventEmitter.emit('email:undo', { emailId: 'cancelled' });
+        },
+      );
     },
 
     reply: async (emailId: string, options: ReplyOptions): Promise<SendResult> => {
@@ -243,6 +425,36 @@ export class Emai {
       this.ensureConnected();
       await this.provider.archiveEmail(emailId);
       this.eventEmitter.emit('email:moved', { emailId, folder: 'archive' });
+    },
+
+    // Snooze
+    snooze: async (emailId: string, until: Date, originalFolder?: string): Promise<void> => {
+      this.ensureConnected();
+      await this.snoozeEngine.snooze(emailId, until, this.provider, originalFolder);
+      this.eventEmitter.emit('email:snoozed', { emailId, until: until.toISOString() });
+    },
+
+    unsnooze: async (emailId: string): Promise<void> => {
+      this.ensureConnected();
+      await this.snoozeEngine.unsnooze(emailId, this.provider);
+      this.eventEmitter.emit('email:unsnoozed', { emailId, reason: 'manual' });
+    },
+
+    listSnoozed: async (): Promise<SnoozedEmail[]> => {
+      this.ensureConnected();
+      return this.snoozeEngine.listSnoozed();
+    },
+
+    // Scheduled send
+    cancelScheduled: async (id: string): Promise<void> => {
+      this.ensureConnected();
+      await this.scheduleEngine.cancel(id);
+      this.eventEmitter.emit('email:schedule-cancelled', { id });
+    },
+
+    listScheduled: async (): Promise<ScheduledEmail[]> => {
+      this.ensureConnected();
+      return this.scheduleEngine.listPending();
     },
   };
 
@@ -440,6 +652,398 @@ export class Emai {
 
     detectActionsInThread: async (thread: Thread): Promise<ActionItem[]> => {
       return this.requireAi().detectActionsInThread(thread);
+    },
+
+    // Topic grouping
+    groupByTopic: async (
+      emails: Email[],
+      options?: { maxGroups?: number; minGroupSize?: number },
+    ): Promise<TopicGroupingResult> => {
+      return this.requireAi().groupByTopic(emails, options);
+    },
+
+    extractTopics: async (email: Email): Promise<string[]> => {
+      return this.requireAi().extractTopics(email);
+    },
+
+    suggestCategories: async (
+      emails: Email[],
+    ): Promise<CategorySuggestion[]> => {
+      return this.requireAi().suggestCategories(emails);
+    },
+
+    // Ask AI
+    ask: async (question: string, emails?: Email[]): Promise<AskResult> => {
+      return this.requireAi().askQuestion(question, emails ?? []);
+    },
+  };
+
+  // -------------------------------------------------------------------------
+  // Snippets / Templates
+  // -------------------------------------------------------------------------
+
+  readonly snippets = {
+    create: async (options: CreateSnippetOptions): Promise<Snippet> => {
+      this.ensureConnected();
+      return this.snippetEngine.create(options);
+    },
+
+    get: async (id: string): Promise<Snippet | null> => {
+      this.ensureConnected();
+      return this.snippetEngine.get(id);
+    },
+
+    getByName: async (name: string): Promise<Snippet | null> => {
+      this.ensureConnected();
+      return this.snippetEngine.getByName(name);
+    },
+
+    list: async (): Promise<Snippet[]> => {
+      this.ensureConnected();
+      return this.snippetEngine.list();
+    },
+
+    update: async (id: string, options: Partial<CreateSnippetOptions>): Promise<Snippet> => {
+      this.ensureConnected();
+      return this.snippetEngine.update(id, options);
+    },
+
+    delete: async (id: string): Promise<void> => {
+      this.ensureConnected();
+      return this.snippetEngine.delete(id);
+    },
+
+    render: async (nameOrId: string, variables?: Record<string, string>): Promise<RenderedSnippet> => {
+      this.ensureConnected();
+      return this.snippetEngine.render(nameOrId, variables);
+    },
+  };
+
+  // -------------------------------------------------------------------------
+  // Inbox (Focused Inbox + Pipeline)
+  // -------------------------------------------------------------------------
+
+  readonly inbox = {
+    process: async (
+      emails: Email[],
+      options?: InboxProcessOptions,
+    ): Promise<InboxProcessResult> => {
+      const ai = this.requireAi();
+      return this.inboxEngine.process(emails, ai, ai.topicGrouping, options);
+    },
+  };
+
+  // -------------------------------------------------------------------------
+  // Reminders
+  // -------------------------------------------------------------------------
+
+  readonly reminders = {
+    track: async (
+      emailId: string,
+      subject: string,
+      sentTo: string[],
+      sentAt: Date,
+      remindAfter?: Date,
+    ): Promise<Reminder> => {
+      this.ensureConnected();
+      return this.reminderEngine.track(emailId, subject, sentTo, sentAt, remindAfter);
+    },
+
+    list: async (options?: { status?: ReminderStatus }): Promise<Reminder[]> => {
+      this.ensureConnected();
+      return this.reminderEngine.list(options);
+    },
+
+    dismiss: async (id: string): Promise<void> => {
+      this.ensureConnected();
+      return this.reminderEngine.dismiss(id);
+    },
+
+    markReplied: async (id: string, replyEmailId: string): Promise<void> => {
+      this.ensureConnected();
+      await this.reminderEngine.markReplied(id, replyEmailId);
+      this.eventEmitter.emit('reminder:replied', {
+        reminderId: id,
+        emailId: replyEmailId,
+      });
+    },
+
+    check: async (): Promise<void> => {
+      this.ensureConnected();
+      const dueReminders = await this.reminderEngine.checkDue();
+      for (const reminder of dueReminders) {
+        this.eventEmitter.emit('reminder:due', {
+          reminderId: reminder.id,
+          emailId: reminder.emailId,
+          subject: reminder.subject,
+        });
+      }
+    },
+  };
+
+  // -------------------------------------------------------------------------
+  // Tracking
+  // -------------------------------------------------------------------------
+
+  readonly tracking = {
+    recordOpen: async (
+      emailId: string,
+      event?: Partial<TrackingEventData>,
+    ): Promise<void> => {
+      await this.trackingEngine.recordOpen(emailId, event);
+      this.eventEmitter.emit('email:opened', {
+        emailId,
+        timestamp: event?.timestamp ?? new Date().toISOString(),
+        ip: event?.ip,
+        userAgent: event?.userAgent,
+      });
+    },
+
+    recordClick: async (
+      emailId: string,
+      url: string,
+      event?: Partial<TrackingEventData>,
+    ): Promise<void> => {
+      await this.trackingEngine.recordClick(emailId, url, event);
+      this.eventEmitter.emit('email:clicked', {
+        emailId,
+        url,
+        timestamp: event?.timestamp ?? new Date().toISOString(),
+        ip: event?.ip,
+        userAgent: event?.userAgent,
+      });
+    },
+
+    getStatus: async (emailId: string): Promise<TrackingStatus> => {
+      return this.trackingEngine.getStatus(emailId);
+    },
+
+    getSendStatus: async (emailId: string): Promise<SendStatusInfo | null> => {
+      return this.sendStatusTracker.getStatus(emailId);
+    },
+
+    listByStatus: async (status: SendStatus): Promise<SendStatusInfo[]> => {
+      return this.sendStatusTracker.listByStatus(status);
+    },
+  };
+
+  // -------------------------------------------------------------------------
+  // Bounces
+  // -------------------------------------------------------------------------
+
+  readonly bounces = {
+    detect: (email: Email): BounceInfo | null => {
+      return this.bounceEngine.detect(email);
+    },
+
+    check: async (emailId: string, email: Email): Promise<StoredBounceInfo | null> => {
+      this.ensureConnected();
+      const bounce = this.bounceEngine.detect(email);
+      if (bounce) {
+        await this.bounceEngine.recordBounce(emailId, bounce);
+        this.eventEmitter.emit('email:bounced', {
+          emailId,
+          type: bounce.bounceType === 'unknown' ? 'hard' : bounce.bounceType,
+          reason: bounce.reason,
+          recipient: bounce.recipient,
+        });
+        try {
+          await this.sendStatusTracker.recordBounced(emailId, bounce.reason);
+        } catch {
+          // Non-critical
+        }
+      }
+      return bounce ? { ...bounce, emailId, detectedAt: new Date().toISOString() } : null;
+    },
+
+    scanEmails: async (emails: Email[]): Promise<StoredBounceInfo[]> => {
+      this.ensureConnected();
+      return this.bounceEngine.scanEmails(emails);
+    },
+
+    list: async (): Promise<StoredBounceInfo[]> => {
+      this.ensureConnected();
+      return this.bounceEngine.list();
+    },
+  };
+
+  // -------------------------------------------------------------------------
+  // Rules
+  // -------------------------------------------------------------------------
+
+  readonly rules = {
+    add: async (options: CreateRuleOptions): Promise<Rule> => {
+      this.ensureConnected();
+      return this.rulesEngine.add(options);
+    },
+
+    get: async (id: string): Promise<Rule | null> => {
+      this.ensureConnected();
+      return this.rulesEngine.get(id);
+    },
+
+    list: async (): Promise<Rule[]> => {
+      this.ensureConnected();
+      return this.rulesEngine.list();
+    },
+
+    update: async (id: string, options: Partial<CreateRuleOptions>): Promise<Rule> => {
+      this.ensureConnected();
+      return this.rulesEngine.update(id, options);
+    },
+
+    delete: async (id: string): Promise<void> => {
+      this.ensureConnected();
+      return this.rulesEngine.delete(id);
+    },
+
+    enable: async (id: string): Promise<void> => {
+      this.ensureConnected();
+      return this.rulesEngine.enable(id);
+    },
+
+    disable: async (id: string): Promise<void> => {
+      this.ensureConnected();
+      return this.rulesEngine.disable(id);
+    },
+
+    evaluate: async (
+      email: Email,
+      context?: ConditionContext,
+    ): Promise<MatchedRule[]> => {
+      this.ensureConnected();
+      return this.rulesEngine.evaluate(email, context ?? {}, this.adapter);
+    },
+
+    evaluateAndExecute: async (
+      email: Email,
+      context?: ConditionContext,
+    ): Promise<RuleExecutionResult[]> => {
+      this.ensureConnected();
+      const provider = this.provider;
+      const snooze = this.snoozeEngine;
+      const actionContext: ActionContext = {
+        provider,
+        snoozeEngine: {
+          snooze: (emailId: string, until: Date) => snooze.snooze(emailId, until, provider),
+        },
+      };
+      const results = await this.rulesEngine.evaluateAndExecute(
+        email,
+        context ?? {},
+        actionContext,
+        this.adapter,
+      );
+      for (const r of results) {
+        if (r.matched) {
+          this.eventEmitter.emit('rule:triggered', {
+            ruleId: r.rule.id,
+            ruleName: r.rule.name,
+            emailId: email.id,
+            actions: r.actionsExecuted.filter((a) => a.success).map((a) => a.action.type),
+          });
+        }
+      }
+      return results;
+    },
+  };
+
+  // -------------------------------------------------------------------------
+  // Auto Archive
+  // -------------------------------------------------------------------------
+
+  readonly autoArchive = {
+    train: async (archivedEmails: Email[], keptEmails: Email[]): Promise<void> => {
+      if (!this.autoArchiveEngine) {
+        throw new AdapterNotConfiguredError('auto-archive (requires AI adapter)');
+      }
+      return this.autoArchiveEngine.train(archivedEmails, keptEmails);
+    },
+
+    evaluate: async (email: Email): Promise<AutoArchiveEvaluation> => {
+      if (!this.autoArchiveEngine) {
+        throw new AdapterNotConfiguredError('auto-archive (requires AI adapter)');
+      }
+      return this.autoArchiveEngine.evaluate(email);
+    },
+
+    processInbox: async (emails: Email[]): Promise<{ archive: Email[]; keep: Email[] }> => {
+      if (!this.autoArchiveEngine) {
+        throw new AdapterNotConfiguredError('auto-archive (requires AI adapter)');
+      }
+      return this.autoArchiveEngine.processInbox(emails);
+    },
+  };
+
+  // -------------------------------------------------------------------------
+  // Auto Labels
+  // -------------------------------------------------------------------------
+
+  readonly autoLabels = {
+    create: async (options: CreateAutoLabelOptions): Promise<AutoLabelRule> => {
+      if (!this.autoLabelEngine) {
+        throw new AdapterNotConfiguredError('auto-labels (requires AI adapter)');
+      }
+      return this.autoLabelEngine.create(options);
+    },
+
+    get: async (id: string): Promise<AutoLabelRule | null> => {
+      if (!this.autoLabelEngine) {
+        throw new AdapterNotConfiguredError('auto-labels (requires AI adapter)');
+      }
+      return this.autoLabelEngine.get(id);
+    },
+
+    list: async (): Promise<AutoLabelRule[]> => {
+      if (!this.autoLabelEngine) {
+        throw new AdapterNotConfiguredError('auto-labels (requires AI adapter)');
+      }
+      return this.autoLabelEngine.list();
+    },
+
+    update: async (id: string, options: Partial<CreateAutoLabelOptions>): Promise<AutoLabelRule> => {
+      if (!this.autoLabelEngine) {
+        throw new AdapterNotConfiguredError('auto-labels (requires AI adapter)');
+      }
+      return this.autoLabelEngine.update(id, options);
+    },
+
+    delete: async (id: string): Promise<void> => {
+      if (!this.autoLabelEngine) {
+        throw new AdapterNotConfiguredError('auto-labels (requires AI adapter)');
+      }
+      return this.autoLabelEngine.delete(id);
+    },
+
+    apply: async (email: Email): Promise<AppliedLabel[]> => {
+      if (!this.autoLabelEngine) {
+        throw new AdapterNotConfiguredError('auto-labels (requires AI adapter)');
+      }
+      return this.autoLabelEngine.apply(email);
+    },
+
+    applyBatch: async (emails: Email[]): Promise<Map<string, AppliedLabel[]>> => {
+      if (!this.autoLabelEngine) {
+        throw new AdapterNotConfiguredError('auto-labels (requires AI adapter)');
+      }
+      return this.autoLabelEngine.applyBatch(emails);
+    },
+  };
+
+  // -------------------------------------------------------------------------
+  // Auto Drafts
+  // -------------------------------------------------------------------------
+
+  readonly autoDrafts = {
+    generateFollowUps: async (
+      sentEmails: Email[],
+      receivedEmails: Email[],
+      options?: AutoDraftOptions,
+    ): Promise<FollowUpSuggestion[]> => {
+      if (!this.autoDraftsEngine) {
+        throw new AdapterNotConfiguredError('auto-drafts (requires AI adapter)');
+      }
+      return this.autoDraftsEngine.generateFollowUps(sentEmails, receivedEmails, options);
     },
   };
 
@@ -640,7 +1244,31 @@ export type {
   VectorSearchResult,
   ParsedImage,
   ParsedTable,
+  UndoConfig,
+  TrackingConfig,
+  AutoArchiveConfig,
+  SendTrackingOptions,
 } from './core/types.js';
+
+// New feature types
+export type { UndoableSendResult } from './undo/engine.js';
+export type { SnoozedEmail } from './snooze/engine.js';
+export type { ScheduledEmail } from './schedule/engine.js';
+export type { Snippet, CreateSnippetOptions, RenderedSnippet } from './snippets/engine.js';
+export type { Reminder, ReminderStatus } from './reminders/engine.js';
+export type { TrackingStatus, TrackingEventData } from './tracking/engine.js';
+export type { SendStatusInfo, SendStatus } from './tracking/send-status.js';
+export type { StoredBounceInfo } from './bounces/engine.js';
+export type { BounceInfo } from './bounces/parser.js';
+export type { Rule, CreateRuleOptions, MatchedRule, RuleExecutionResult } from './rules/engine.js';
+export type { RuleCondition, ConditionContext } from './rules/conditions.js';
+export type { RuleAction, ActionContext } from './rules/actions.js';
+export type { InboxProcessOptions, InboxProcessResult, EnrichedEmail } from './inbox/engine.js';
+export type { TopicGroup, TopicGroupingResult, CategorySuggestion } from './ai/topic-grouping.js';
+export type { AskResult } from './ai/ask.js';
+export type { AutoArchiveEvaluation } from './auto-archive/engine.js';
+export type { AutoLabelRule, CreateAutoLabelOptions, AppliedLabel } from './auto-labels/engine.js';
+export type { FollowUpSuggestion, AutoDraftOptions } from './auto-drafts/engine.js';
 
 export { EmaiError, ProviderError, AuthenticationError, ConnectionError, NotFoundError, AiError, SearchError, SafetyError, DependencyError, ValidationError } from './core/errors.js';
 export { AiEngine } from './ai/index.js';
@@ -655,3 +1283,20 @@ export { EmaiEventEmitter } from './events/emitter.js';
 export { EmailWatcher } from './events/watcher.js';
 export { WebhookManager } from './events/webhooks.js';
 export { startEmaiMcpServer, createEmaiMcpServer } from './mcp/server.js';
+
+// New engine exports
+export { SnippetEngine } from './snippets/engine.js';
+export { SnoozeEngine } from './snooze/engine.js';
+export { ScheduleEngine } from './schedule/engine.js';
+export { UndoEngine } from './undo/engine.js';
+export { ReminderEngine } from './reminders/engine.js';
+export { TrackingEngine } from './tracking/engine.js';
+export { SendStatusTracker } from './tracking/send-status.js';
+export { BounceEngine } from './bounces/engine.js';
+export { isBounceEmail, parseBounce } from './bounces/parser.js';
+export { RulesEngine } from './rules/engine.js';
+export { InboxEngine } from './inbox/engine.js';
+export { AutoArchiveEngine } from './auto-archive/engine.js';
+export { AutoLabelEngine } from './auto-labels/engine.js';
+export { AutoDraftsEngine } from './auto-drafts/engine.js';
+export { EmaiHub } from './hub/index.js';

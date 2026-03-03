@@ -99,6 +99,7 @@ export interface SendEmailOptions {
   replyTo?: string | EmailAddress;
   headers?: Record<string, string>;
   scheduledAt?: Date;
+  tracking?: SendTrackingOptions;
 }
 
 export interface ReplyOptions {
@@ -556,6 +557,20 @@ export type EmaiEvent =
   | 'email:labeled'
   | 'email:classified'
   | 'email:indexed'
+  | 'email:snoozed'
+  | 'email:unsnoozed'
+  | 'email:scheduled'
+  | 'email:schedule-cancelled'
+  | 'email:undo'
+  | 'email:opened'
+  | 'email:clicked'
+  | 'email:bounced'
+  | 'email:delivered'
+  | 'email:failed'
+  | 'reminder:due'
+  | 'reminder:replied'
+  | 'rule:triggered'
+  | 'rule:error'
   | 'safety:risk'
   | 'safety:blocked'
   | 'safety:approved'
@@ -573,6 +588,20 @@ export type EmaiEventMap = {
   'email:labeled': { emailId: string; label: string; action: 'add' | 'remove' };
   'email:classified': { emailId: string; result: ClassificationResult };
   'email:indexed': { emailId: string };
+  'email:snoozed': { emailId: string; until: string };
+  'email:unsnoozed': { emailId: string; reason: 'manual' | 'timer' };
+  'email:scheduled': { id: string; scheduledAt: string };
+  'email:schedule-cancelled': { id: string };
+  'email:undo': { emailId: string };
+  'email:opened': { emailId: string; timestamp: string; ip?: string; userAgent?: string };
+  'email:clicked': { emailId: string; url: string; timestamp: string; ip?: string; userAgent?: string };
+  'email:bounced': { emailId: string; type: 'hard' | 'soft'; reason: string; recipient?: string };
+  'email:delivered': { emailId: string };
+  'email:failed': { emailId: string; error: string };
+  'reminder:due': { reminderId: string; emailId: string; subject: string };
+  'reminder:replied': { reminderId: string; emailId: string };
+  'rule:triggered': { ruleId: string; ruleName: string; emailId: string; actions: string[] };
+  'rule:error': { ruleId: string; error: string };
   'safety:risk': { emailId?: string; result: ScanResult };
   'safety:blocked': { emailId?: string; risks: Risk[] };
   'safety:approved': { emailId?: string };
@@ -581,6 +610,32 @@ export type EmaiEventMap = {
   'watch:error': Error;
   error: Error;
 };
+
+// ---------------------------------------------------------------------------
+// Feature config
+// ---------------------------------------------------------------------------
+
+export interface UndoConfig {
+  /** Delay in milliseconds before actually sending (default: 5000) */
+  undoWindow?: number;
+}
+
+export interface TrackingConfig {
+  /** Base URL for open-tracking pixel */
+  pixelUrl?: string;
+  /** Base URL for click-tracking redirect */
+  redirectUrl?: string;
+}
+
+export interface AutoArchiveConfig {
+  enabled?: boolean;
+  confidenceThreshold?: number;
+}
+
+export interface SendTrackingOptions {
+  opens?: boolean;
+  clicks?: boolean;
+}
 
 // ---------------------------------------------------------------------------
 // Main config
@@ -592,4 +647,7 @@ export interface EmaiConfig {
   search?: SearchConfig;
   storage?: StorageConfig;
   safety?: SafetyConfig;
+  undo?: UndoConfig;
+  tracking?: TrackingConfig;
+  autoArchive?: AutoArchiveConfig;
 }
