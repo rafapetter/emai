@@ -48,6 +48,16 @@ export class SearchEngine {
   }
 
   async index(emails: Email[]): Promise<void> {
+    // Always populate full-text index first (no external dependencies)
+    await this.fullTextSearch.indexEmails(emails);
+
+    if (this.storage) {
+      for (const email of emails) {
+        await this.storage.saveEmail(email);
+      }
+    }
+
+    // Vector indexing requires embedding model — may throw
     await this.ensureInitialized();
 
     const allEntries: VectorEntry[] = [];
@@ -55,17 +65,11 @@ export class SearchEngine {
     for (const email of emails) {
       const entries = await this.createVectorEntries(email);
       allEntries.push(...entries);
-
-      if (this.storage) {
-        await this.storage.saveEmail(email);
-      }
     }
 
     if (allEntries.length > 0) {
       await this.vectorStore.upsert(allEntries);
     }
-
-    await this.fullTextSearch.indexEmails(emails);
   }
 
   async indexEmail(email: Email): Promise<void> {

@@ -1,6 +1,6 @@
 {
   "name": "@petter100/emai",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "AI-first unified email toolkit for agents — read, send, search, classify, extract, and manage email across any provider",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -63,13 +63,14 @@
   },
   "optionalDependencies": {
     "better-sqlite3": "^11.0.0",
-    "imapflow": "^1.0.0",
-    "mailparser": "^3.7.0",
-    "nodemailer": "^7.0.0"
+    "imapflow": "^1.2.10",
+    "mailparser": "^3.9.3",
+    "nodemailer": "^7.0.13",
+    "pdf-parse": "^1.1.1"
   },
   "peerDependencies": {
     "@anthropic-ai/sdk": ">=0.30.0",
-    "@google/generative-ai": ">=0.21.0",
+    "@google/generative-ai": "^0.24.1",
     "@microsoft/microsoft-graph-client": ">=3.0.0",
     "@modelcontextprotocol/sdk": ">=1.0.0",
     "@pinecone-database/pinecone": ">=4.0.0",
@@ -80,7 +81,6 @@
     "ollama": ">=0.5.0",
     "openai": ">=4.0.0",
     "papaparse": ">=5.4.0",
-    "pdf-parse": ">=1.1.0",
     "pg": ">=8.0.0",
     "sharp": ">=0.33.0",
     "tesseract.js": ">=5.0.0",

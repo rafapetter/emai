@@ -127,10 +127,29 @@ export function cosineSimilarity(a: number[], b: number[]): number {
 }
 
 export async function tryImport<T>(pkg: string, feature: string): Promise<T> {
+  const basePkg = pkg.split('/')[0];
   try {
     return await import(pkg);
-  } catch {
-    throw new DependencyError(pkg, feature);
+  } catch (err: unknown) {
+    // Only fall back for module-not-found errors, not runtime errors
+    const code = (err as { code?: string }).code;
+    if (code !== 'ERR_MODULE_NOT_FOUND' && code !== 'MODULE_NOT_FOUND') {
+      throw err;
+    }
+    // Fallback: use createRequire for environments where dynamic import()
+    // resolves from the bundle location rather than the project root
+    // (e.g., when emai is used via file: dependency in Next.js).
+    try {
+      const { createRequire } = await import('node:module');
+      const req = createRequire(process.cwd() + '/');
+      return req(pkg) as T;
+    } catch (innerErr: unknown) {
+      const innerCode = (innerErr as { code?: string }).code;
+      if (innerCode === 'ERR_MODULE_NOT_FOUND' || innerCode === 'MODULE_NOT_FOUND') {
+        throw new DependencyError(basePkg, feature);
+      }
+      throw innerErr;
+    }
   }
 }
 

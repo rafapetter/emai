@@ -1,0 +1,4 @@
+.next/
+node_modules/
+.emai-playground.json
+next-env.d.ts

@@ -16,9 +16,49 @@ const ActionItemSchema = z.object({
   status: z.enum(['pending', 'done', 'unknown']),
 });
 
-const ActionsResultSchema = z.object({
-  actions: z.array(ActionItemSchema),
-});
+// Map LLM status variants to valid enum values
+function normalizeStatus(raw: string): string {
+  const s = raw.toLowerCase().trim();
+  if (s === 'done' || s === 'complete' || s === 'completed' || s === 'finished') return 'done';
+  if (s === 'pending' || s === 'open' || s === 'todo' || s === 'to do' || s === 'not started') return 'pending';
+  if (s === 'in progress' || s === 'in-progress' || s === 'active' || s === 'ongoing' || s === 'started') return 'pending';
+  if (s === 'unknown' || s === 'n/a' || s === 'none') return 'unknown';
+  return 'unknown';
+}
+
+// Map LLM priority variants to valid enum values
+function normalizePriority(raw: string): string {
+  const p = raw.toLowerCase().trim();
+  if (p === 'high' || p === 'critical' || p === 'urgent') return 'high';
+  if (p === 'medium' || p === 'normal' || p === 'moderate') return 'medium';
+  if (p === 'low' || p === 'minor' || p === 'none') return 'low';
+  return 'medium';
+}
+
+// Normalize LLM quirks before validation: null → undefined, 'High' → 'high', 'In Progress' → 'pending'
+function normalizeActionItems(val: unknown): unknown {
+  if (typeof val !== 'object' || val === null) return val;
+  const obj = val as Record<string, unknown>;
+  if (Array.isArray(obj.actions)) {
+    obj.actions = obj.actions.map((item: unknown) => {
+      if (typeof item !== 'object' || item === null) return item;
+      const a = item as Record<string, unknown>;
+      return {
+        ...a,
+        assignee: a.assignee ?? undefined,
+        dueDate: a.dueDate ?? undefined,
+        priority: typeof a.priority === 'string' ? normalizePriority(a.priority) : a.priority,
+        status: typeof a.status === 'string' ? normalizeStatus(a.status) : a.status,
+      };
+    });
+  }
+  return obj;
+}
+
+const ActionsResultSchema = z.preprocess(
+  normalizeActionItems,
+  z.object({ actions: z.array(ActionItemSchema) }),
+);
 
 const ACTIONS_SYSTEM_PROMPT = `You are an expert at identifying action items and tasks in email communications.
 
@@ -62,7 +102,7 @@ Return JSON with:
         prompt,
         ActionsResultSchema,
         { systemPrompt: ACTIONS_SYSTEM_PROMPT, temperature: 0.1 },
-      );
+      ) as { actions: ActionItem[] };
       return result.actions;
     } catch (err) {
       throw new AiError(
@@ -99,7 +139,7 @@ Important: If an action was requested in an earlier message and confirmed/comple
         prompt,
         ActionsResultSchema,
         { systemPrompt: ACTIONS_SYSTEM_PROMPT, temperature: 0.1 },
-      );
+      ) as { actions: ActionItem[] };
       return result.actions;
     } catch (err) {
       throw new AiError(

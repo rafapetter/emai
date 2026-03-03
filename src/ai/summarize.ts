@@ -5,6 +5,7 @@ import type {
   LLMAdapter,
   SummaryResult,
   EmailAddress,
+  ActionItem,
 } from '../core/types.js';
 import { AiError } from '../core/errors.js';
 import { emailToPlainText, truncate, formatEmailAddress } from '../core/utils.js';
@@ -17,19 +18,61 @@ const ActionItemSchema = z.object({
   status: z.enum(['pending', 'done', 'unknown']),
 });
 
-const SummaryResultSchema = z.object({
-  summary: z.string(),
-  keyPoints: z.array(z.string()),
-  participants: z.array(
-    z.object({
-      name: z.string().optional(),
-      address: z.string(),
-    }),
-  ),
-  actionItems: z.array(ActionItemSchema),
-  sentiment: z.enum(['positive', 'negative', 'neutral', 'mixed']),
-  topicTags: z.array(z.string()),
-});
+// Map LLM status variants to valid enum values
+function normalizeStatus(raw: string): string {
+  const s = raw.toLowerCase().trim();
+  if (s === 'done' || s === 'complete' || s === 'completed' || s === 'finished') return 'done';
+  if (s === 'pending' || s === 'open' || s === 'todo' || s === 'to do' || s === 'not started') return 'pending';
+  if (s === 'in progress' || s === 'in-progress' || s === 'active' || s === 'ongoing' || s === 'started') return 'pending';
+  if (s === 'unknown' || s === 'n/a' || s === 'none') return 'unknown';
+  return 'unknown';
+}
+
+// Map LLM priority variants to valid enum values
+function normalizePriority(raw: string): string {
+  const p = raw.toLowerCase().trim();
+  if (p === 'high' || p === 'critical' || p === 'urgent') return 'high';
+  if (p === 'medium' || p === 'normal' || p === 'moderate') return 'medium';
+  if (p === 'low' || p === 'minor' || p === 'none') return 'low';
+  return 'medium';
+}
+
+// Normalize LLM quirks in actionItems: null → undefined, 'High' → 'high', 'In Progress' → 'pending'
+function normalizeActionItemsInSummary(val: unknown): unknown {
+  if (typeof val !== 'object' || val === null) return val;
+  const obj = val as Record<string, unknown>;
+  if (Array.isArray(obj.actionItems)) {
+    obj.actionItems = obj.actionItems.map((item: unknown) => {
+      if (typeof item !== 'object' || item === null) return item;
+      const a = item as Record<string, unknown>;
+      return {
+        ...a,
+        assignee: a.assignee ?? undefined,
+        dueDate: a.dueDate ?? undefined,
+        priority: typeof a.priority === 'string' ? normalizePriority(a.priority) : a.priority,
+        status: typeof a.status === 'string' ? normalizeStatus(a.status) : a.status,
+      };
+    });
+  }
+  return obj;
+}
+
+const SummaryResultSchema = z.preprocess(
+  normalizeActionItemsInSummary,
+  z.object({
+    summary: z.string(),
+    keyPoints: z.array(z.string()),
+    participants: z.array(
+      z.object({
+        name: z.string().optional(),
+        address: z.string(),
+      }),
+    ),
+    actionItems: z.array(ActionItemSchema),
+    sentiment: z.enum(['positive', 'negative', 'neutral', 'mixed']),
+    topicTags: z.array(z.string()),
+  }),
+);
 
 const SUMMARIZE_SYSTEM_PROMPT = `You are an expert email summarizer. Create concise, actionable summaries that capture the essential information.
 
@@ -67,7 +110,7 @@ Return JSON with:
         SummaryResultSchema,
         { systemPrompt: SUMMARIZE_SYSTEM_PROMPT, temperature: 0.2 },
       );
-      return normalizeSummaryResult(result, [email]);
+      return normalizeSummaryResult(result as RawSummaryData, [email]);
     } catch (err) {
       throw new AiError(
         `Failed to summarize email: ${err instanceof Error ? err.message : String(err)}`,
@@ -109,7 +152,7 @@ Return JSON with:
         SummaryResultSchema,
         { systemPrompt: SUMMARIZE_SYSTEM_PROMPT, temperature: 0.2 },
       );
-      return normalizeSummaryResult(result, thread.emails);
+      return normalizeSummaryResult(result as RawSummaryData, thread.emails);
     } catch (err) {
       throw new AiError(
         `Failed to summarize thread: ${err instanceof Error ? err.message : String(err)}`,
@@ -153,8 +196,17 @@ Write the digest as plain text (not JSON). Use clear sections and bullet points 
   }
 }
 
+interface RawSummaryData {
+  summary: string;
+  keyPoints: string[];
+  participants: Array<{ name?: string; address: string }>;
+  actionItems: ActionItem[];
+  sentiment: 'positive' | 'negative' | 'neutral' | 'mixed';
+  topicTags: string[];
+}
+
 function normalizeSummaryResult(
-  raw: z.infer<typeof SummaryResultSchema>,
+  raw: RawSummaryData,
   emails: Email[],
 ): SummaryResult {
   const knownParticipants = new Map<string, EmailAddress>();

@@ -74,8 +74,11 @@ export class PdfParser {
   }
 
   private async loadPdfParse(): Promise<PdfParseFn> {
-    const mod = await tryImport<{ default: PdfParseFn }>('pdf-parse', 'PDF parsing');
-    return mod.default;
+    // Use lib/pdf-parse directly to avoid the debug test code in index.js
+    // that tries to read ./test/data/05-versions-space.pdf at startup.
+    const mod = await tryImport<PdfParseFn | { default: PdfParseFn }>('pdf-parse/lib/pdf-parse', 'PDF parsing');
+    // ESM import() wraps CJS as { default: fn }, createRequire returns fn directly
+    return typeof mod === 'function' ? mod : mod.default;
   }
 
   private cleanText(text: string): string {
