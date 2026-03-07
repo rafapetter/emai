@@ -1274,7 +1274,11 @@ export { EmaiError, ProviderError, AuthenticationError, ConnectionError, NotFoun
 export { AiEngine } from './ai/index.js';
 export { createAdapter } from './ai/adapter.js';
 export { createProvider } from './providers/index.js';
+export { SearchEngine } from './search/engine.js';
+export { FullTextSearch } from './search/full-text.js';
 export { createVectorStore } from './search/stores/index.js';
+export { MemoryVectorStore } from './search/stores/memory.js';
+export { SqliteVectorStore } from './search/stores/sqlite.js';
 export { createStorage } from './storage/index.js';
 export { AttachmentParser } from './attachments/parser.js';
 export { ThreadDetector } from './threading/detector.js';

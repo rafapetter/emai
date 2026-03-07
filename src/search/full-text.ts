@@ -265,7 +265,7 @@ function matchesParsedFilters(email: Email, parsed: ParsedQuery): boolean {
   }
 
   if (parsed.hasAttachment !== undefined && parsed.hasAttachment) {
-    if (email.attachments.length === 0) return false;
+    if ((email.attachments ?? []).length === 0) return false;
   }
 
   if (parsed.isRead !== undefined && email.isRead !== parsed.isRead) return false;

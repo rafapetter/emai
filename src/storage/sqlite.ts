@@ -104,7 +104,7 @@ export class SqliteStorage extends BaseStorageAdapter {
       email.threadId ?? null,
       email.isRead ? 1 : 0,
       email.isStarred ? 1 : 0,
-      email.attachments.length > 0 ? 1 : 0,
+      (email.attachments ?? []).length > 0 ? 1 : 0,
     );
   }
 
@@ -127,7 +127,7 @@ export class SqliteStorage extends BaseStorageAdapter {
         email.threadId ?? null,
         email.isRead ? 1 : 0,
         email.isStarred ? 1 : 0,
-        email.attachments.length > 0 ? 1 : 0,
+        (email.attachments ?? []).length > 0 ? 1 : 0,
       );
     }
   }

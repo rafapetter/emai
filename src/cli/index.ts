@@ -155,7 +155,7 @@ function printEmailSummary(email: Email, index?: number): void {
   out(`${prefix} ${read} ${star} ${from}`);
   out(`     ${subject}${snippet}`);
   out(`     ${date}  ${c.dim(email.folder)}  ${email.labels.map((l) => c.cyan(`[${l}]`)).join(' ')}`);
-  if (email.attachments.length > 0) {
+  if ((email.attachments ?? []).length > 0) {
     out(`     ${c.dim('📎')} ${email.attachments.map((a) => a.filename).join(', ')}`);
   }
   out('');
@@ -178,10 +178,10 @@ function printEmailFull(email: Email): void {
   out(`${c.bold('Folder:')}  ${email.folder}`);
   out(`${c.bold('Status:')}  ${email.isRead ? 'Read' : c.blue('Unread')}${email.isStarred ? ' ' + c.yellow('★ Starred') : ''}`);
 
-  if (email.attachments.length > 0) {
+  if ((email.attachments ?? []).length > 0) {
     out('');
     out(c.bold('Attachments:'));
-    for (const att of email.attachments) {
+    for (const att of email.attachments ?? []) {
       out(`  📎 ${att.filename} ${c.dim(`(${att.contentType}, ${formatSize(att.size)})`)}`);
     }
   }

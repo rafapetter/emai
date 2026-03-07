@@ -124,7 +124,8 @@ Return JSON with:
       .sort((a, b) => a.date.getTime() - b.date.getTime())
       .map((e, i) => {
         const text = truncate(emailToPlainText(e), 3000);
-        return `--- Message ${i + 1} of ${thread.emails.length} (${e.date.toISOString()}) ---\n${text}`;
+        const dateStr = e.date instanceof Date ? e.date.toISOString() : (e.date ? String(e.date) : '');
+        return `--- Message ${i + 1} of ${thread.emails.length} (${dateStr}) ---\n${text}`;
       })
       .join('\n\n');
 
@@ -168,10 +169,11 @@ Return JSON with:
       .map((e, i) => {
         const from = formatEmailAddress(e.from);
         const text = truncate(
-          e.body.text || e.snippet || e.subject,
+          e.body?.text || e.snippet || e.subject || '',
           500,
         );
-        return `${i + 1}. From: ${from} | Subject: ${e.subject} | ${e.date.toISOString()}\n${text}`;
+        const dateStr = e.date instanceof Date ? e.date.toISOString() : (e.date ? String(e.date) : '');
+        return `${i + 1}. From: ${from} | Subject: ${e.subject} | ${dateStr}\n${text}`;
       })
       .join('\n\n');
 
@@ -211,9 +213,9 @@ function normalizeSummaryResult(
 ): SummaryResult {
   const knownParticipants = new Map<string, EmailAddress>();
   for (const email of emails) {
-    addParticipant(knownParticipants, email.from);
-    for (const addr of email.to) addParticipant(knownParticipants, addr);
-    for (const addr of email.cc) addParticipant(knownParticipants, addr);
+    if (email.from) addParticipant(knownParticipants, email.from);
+    for (const addr of email.to ?? []) addParticipant(knownParticipants, addr);
+    for (const addr of email.cc ?? []) addParticipant(knownParticipants, addr);
   }
 
   for (const p of raw.participants) {

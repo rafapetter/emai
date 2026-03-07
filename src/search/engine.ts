@@ -175,7 +175,7 @@ function extractEmailMetadata(email: Email): Record<string, unknown> {
     labels: email.labels,
     isRead: email.isRead,
     isStarred: email.isStarred,
-    hasAttachments: email.attachments.length > 0,
+    hasAttachments: (email.attachments ?? []).length > 0,
     threadId: email.threadId ?? null,
   };
 }

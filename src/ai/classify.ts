@@ -60,9 +60,10 @@ export class ClassifyEngine {
 
   async classify(email: Email): Promise<ClassificationResult> {
     const emailText = truncate(emailToPlainText(email), 8000);
+    const attachments = email.attachments ?? [];
     const attachmentInfo =
-      email.attachments.length > 0
-        ? `\nAttachments: ${email.attachments.map((a) => `${a.filename} (${a.contentType})`).join(', ')}`
+      attachments.length > 0
+        ? `\nAttachments: ${attachments.map((a) => `${a.filename} (${a.contentType})`).join(', ')}`
         : '';
 
     const prompt = `Classify this email:

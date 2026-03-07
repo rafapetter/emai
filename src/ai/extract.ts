@@ -29,7 +29,7 @@ export class ExtractEngine {
   ): Promise<ExtractionResult<T>> {
     const emailText = truncate(emailToPlainText(email), 10000);
 
-    const attachmentText = email.attachments
+    const attachmentText = (email.attachments ?? [])
       .filter((a) => a.contentType.startsWith('text/'))
       .map((a) => `[Attachment: ${a.filename}]`)
       .join('\n');

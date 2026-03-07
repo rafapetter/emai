@@ -156,7 +156,7 @@ function buildContextFromEmail(
       sender: e.from,
       recipients: [...e.to, ...e.cc, ...e.bcc],
       subject: e.subject,
-      hasAttachments: e.attachments.length > 0,
+      hasAttachments: (e.attachments ?? []).length > 0,
     };
   }
 

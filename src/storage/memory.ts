@@ -89,7 +89,7 @@ function applyFilters(emails: Email[], options: ListEmailsOptions): Email[] {
       return false;
     if (options.after && email.date < options.after) return false;
     if (options.before && email.date > options.before) return false;
-    if (options.hasAttachment !== undefined && (email.attachments.length > 0) !== options.hasAttachment)
+    if (options.hasAttachment !== undefined && ((email.attachments ?? []).length > 0) !== options.hasAttachment)
       return false;
     if (options.isRead !== undefined && email.isRead !== options.isRead) return false;
     if (options.isStarred !== undefined && email.isStarred !== options.isStarred) return false;

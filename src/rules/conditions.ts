@@ -196,7 +196,7 @@ export async function evaluateCondition(
     }
 
     case 'hasAttachment': {
-      const hasAttachments = email.attachments.length > 0;
+      const hasAttachments = (email.attachments ?? []).length > 0;
       const expected = condition.value === true || condition.value === 'true';
       return condition.operator === 'equals'
         ? hasAttachments === expected

@@ -244,7 +244,15 @@ export class ImapSmtpProvider extends BaseProvider {
         secure: this.config.smtp.secure ?? (this.config.smtp.port === 465),
         auth: smtpAuth,
       });
-      await this.smtp.verify();
+      // SMTP verify is non-fatal — allow reading emails even if SMTP has issues
+      try {
+        await this.smtp.verify();
+      } catch (smtpErr) {
+        // Log but don't throw — user can still read emails
+        if (typeof console !== 'undefined') {
+          console.warn('[emai] SMTP verification failed (sending may not work):', smtpErr instanceof Error ? smtpErr.message : smtpErr);
+        }
+      }
 
       this.connected = true;
     } catch (err) {
@@ -414,7 +422,7 @@ export class ImapSmtpProvider extends BaseProvider {
 
   async getAttachmentContent(emailId: string, attachmentId: string): Promise<Buffer> {
     const email = await this.getEmail(emailId);
-    const attachment = email.attachments.find((a) => a.id === attachmentId);
+    const attachment = (email.attachments ?? []).find((a) => a.id === attachmentId);
     if (!attachment?.content) {
       throw this.notFound('Attachment', attachmentId);
     }

@@ -21,14 +21,28 @@ export function formatEmailAddress(addr: EmailAddress): string {
 }
 
 export function emailToPlainText(email: Email): string {
+  const from = email.from
+    ? (typeof email.from === 'object' && 'address' in email.from
+        ? formatEmailAddress(email.from)
+        : String(email.from))
+    : 'Unknown';
+  const to = Array.isArray(email.to) ? email.to.map(formatEmailAddress).join(', ') : '';
+  const cc = Array.isArray(email.cc) && email.cc.length > 0
+    ? `CC: ${email.cc.map(formatEmailAddress).join(', ')}`
+    : '';
+  const date = email.date instanceof Date
+    ? email.date.toISOString()
+    : (email.date ? String(email.date) : '');
+  const bodyText = email.body?.text || stripHtml(email.body?.html || '');
+
   const parts = [
-    `From: ${formatEmailAddress(email.from)}`,
-    `To: ${email.to.map(formatEmailAddress).join(', ')}`,
-    email.cc.length ? `CC: ${email.cc.map(formatEmailAddress).join(', ')}` : '',
-    `Subject: ${email.subject}`,
-    `Date: ${email.date.toISOString()}`,
+    `From: ${from}`,
+    to ? `To: ${to}` : '',
+    cc,
+    `Subject: ${email.subject || ''}`,
+    date ? `Date: ${date}` : '',
     '',
-    email.body.text || stripHtml(email.body.html || ''),
+    bodyText,
   ];
   return parts.filter(Boolean).join('\n');
 }
