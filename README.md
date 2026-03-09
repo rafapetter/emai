@@ -988,6 +988,32 @@ The Playground includes:
 - **Search Console** — Test semantic, full-text, and hybrid search with index management
 - **Event Stream** — Real-time SSE viewer showing all SDK events as they happen
 
+### Screenshots
+
+**Dashboard** — Run all SDK tests at once with detailed pass/fail results
+
+![Dashboard](docs/screenshots/dashboard.png)
+
+**Configuration** — Connect to any IMAP/SMTP provider, configure AI adapter and search
+
+![Configuration](docs/screenshots/config.png)
+
+**Search** — Semantic, full-text, and hybrid search with index management
+
+![Search](docs/screenshots/search.png)
+
+**Safety** — Scan emails and text for PII, credentials, and phishing risks
+
+![Safety](docs/screenshots/safety.png)
+
+**Emails** — List, read, send, and manage emails through an interactive UI
+
+![Emails](docs/screenshots/emails.png)
+
+**Events & Watch** — Real-time IMAP IDLE monitoring with live event stream
+
+![Events](docs/screenshots/events.png)
+
 ---
 
 ## Advanced
