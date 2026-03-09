@@ -1284,7 +1284,7 @@ npm install commander                   # CLI
 
 ## emai-client — Web UI for Humans
 
-While **emai** is designed for AI agents to work with email programmatically, **[emai-client](https://github.com/rafapetter/email-client)** is the companion web app that gives humans a Superhuman-style interface to monitor and manage what their agents are doing.
+While **emai** is designed for AI agents to work with email programmatically, **[emai-client](https://github.com/rafapetter/emai-client)** is the companion web app that gives humans a Superhuman-style interface to monitor and manage what their agents are doing.
 
 Use it to:
 - **Review** AI-generated summaries, priorities, and classifications
@@ -1293,8 +1293,8 @@ Use it to:
 - **Search** across all synced emails with hybrid full-text + semantic search
 
 ```bash
-git clone https://github.com/rafapetter/email-client.git
-cd email-client
+git clone https://github.com/rafapetter/emai-client.git
+cd emai-client
 npm install && npm run db:migrate && npm run dev
 ```
 
