@@ -4,6 +4,9 @@ import { z } from 'zod';
 
 const CONFIG_PATH = join(process.cwd(), '.emai-playground.json');
 
+// Never read config from disk in production (Vercel) — users configure via the UI
+const IS_PRODUCTION = process.env.NODE_ENV === 'production' && process.env.VERCEL === '1';
+
 const AuthSchema = z.union([
   z.object({ user: z.string(), pass: z.string() }),
   z.object({ user: z.string(), accessToken: z.string() }),
@@ -89,6 +92,7 @@ export const PlaygroundConfigSchema = z.object({
 export type PlaygroundConfig = z.infer<typeof PlaygroundConfigSchema>;
 
 export function readConfig(): PlaygroundConfig | null {
+  if (IS_PRODUCTION) return null;
   if (!existsSync(CONFIG_PATH)) return null;
   try {
     const raw = readFileSync(CONFIG_PATH, 'utf-8');
@@ -99,6 +103,7 @@ export function readConfig(): PlaygroundConfig | null {
 }
 
 export function writeConfig(config: PlaygroundConfig): void {
+  if (IS_PRODUCTION) return;
   PlaygroundConfigSchema.parse(config);
   writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf-8');
 }
