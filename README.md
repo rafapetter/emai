@@ -32,6 +32,16 @@ AI agents need email capabilities — reading inboxes, understanding content, ex
 | **Safety built in** | PII scanning, credential detection, phishing analysis, human-in-the-loop approval |
 | **Real-time** | IMAP IDLE, webhooks, event streaming |
 
+### See it in action
+
+The built-in **Playground** lets you test every feature against a real mailbox — classification, extraction, priority scoring, safety scanning, and more:
+
+![Dashboard — test results](docs/screenshots/dashboard-results.png)
+
+![AI classification with confidence scores](docs/screenshots/dashboard-ai.png)
+
+![Data extraction — metadata + AI analysis + attachments](docs/screenshots/dashboard-extraction.png)
+
 ---
 
 ## Table of Contents
@@ -990,29 +1000,14 @@ The Playground includes:
 
 ### Screenshots
 
-**Dashboard** — Run all SDK tests at once with detailed pass/fail results
-
-![Dashboard](docs/screenshots/dashboard.png)
-
-**Configuration** — Connect to any IMAP/SMTP provider, configure AI adapter and search
-
-![Configuration](docs/screenshots/config.png)
-
-**Search** — Semantic, full-text, and hybrid search with index management
-
-![Search](docs/screenshots/search.png)
-
-**Safety** — Scan emails and text for PII, credentials, and phishing risks
-
-![Safety](docs/screenshots/safety.png)
-
-**Emails** — List, read, send, and manage emails through an interactive UI
-
-![Emails](docs/screenshots/emails.png)
-
-**Events & Watch** — Real-time IMAP IDLE monitoring with live event stream
-
-![Events](docs/screenshots/events.png)
+| Page | Description |
+|------|-------------|
+| ![Dashboard](docs/screenshots/dashboard.png) | **Dashboard** — One-click test runner with pass/fail report |
+| ![Configuration](docs/screenshots/config.png) | **Configuration** — Connect any IMAP/SMTP provider + AI adapter |
+| ![Search](docs/screenshots/search.png) | **Search** — Semantic, full-text, and hybrid search |
+| ![Safety](docs/screenshots/safety.png) | **Safety** — PII, credential, and phishing scanning |
+| ![Emails](docs/screenshots/emails.png) | **Emails** — List, read, send, and manage emails |
+| ![Events](docs/screenshots/events.png) | **Events** — Real-time IMAP IDLE + event stream |
 
 ---
 
