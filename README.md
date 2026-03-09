@@ -34,7 +34,7 @@ AI agents need email capabilities — reading inboxes, understanding content, ex
 
 ### See it in action
 
-The built-in **Playground** lets you test every feature against a real mailbox — classification, extraction, priority scoring, safety scanning, and more:
+The built-in **[Playground](https://emai-playground.vercel.app)** lets you test every feature against a real mailbox — classification, extraction, priority scoring, safety scanning, and more:
 
 ![Dashboard — test results](docs/screenshots/dashboard-results.png)
 
@@ -977,7 +977,9 @@ npx emai <command> --quiet             # Suppress info messages
 
 emai ships with an interactive **Playground** — a web UI for testing every SDK feature against your real mailbox.
 
-### Getting Started
+**Try it live:** [emai-playground.vercel.app](https://emai-playground.vercel.app)
+
+### Run Locally
 
 ```bash
 cd playground
